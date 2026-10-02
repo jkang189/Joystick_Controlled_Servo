@@ -1,41 +1,74 @@
-#include <LiquidCrystal.h>
 #include <Servo.h>
+#include <LiquidCrystal.h>
 
 // LCD Setup (RS=12, E=6, D4=5, D5=4, D6=3, D7=2)
 LiquidCrystal lcd(12, 6, 5, 4, 3, 2);
-
-// Servo and Joystick definitions
 Servo myServo;
+
+// Pin Definitions (Buzzer is on Pin 13)
 const int joystickPin = A0;
 const int servoPin = 9;
+const int buzzerPin = 13; 
+
+// Timing variables for non-blocking buzzer beeps
+unsigned long previousMillis = 0;
+bool buzzerState = false;
 
 void setup() {
   lcd.begin(16, 2);
   myServo.attach(servoPin);
+  pinMode(buzzerPin, OUTPUT);
   
-  lcd.print("Joystick Servo");
-  delay(1000);
+  lcd.print("Proportional");
+  lcd.setCursor(0, 1);
+  lcd.print("Control Online");
+  delay(1500);
   lcd.clear();
 }
 
 void loop() {
-  // 1. Read the joystick X-axis value (0 to 1023)
-  int joystickValue = analogRead(joystickPin);
-  
-  // 2. Map the value to servo degrees (0 to 180)
-  int servoAngle = map(joystickValue, 0, 1023, 0, 180);
-  
-  // 3. Move the servo motor to the target angle
-  myServo.write(servoAngle);
-  
-  // 4. Display the live angle on the LCD screen
+  // 1. Read joystick and map to servo angle (0 to 180 degrees)
+  int joyVal = analogRead(joystickPin);
+  int angle = map(joyVal, 0, 1023, 0, 180);
+  myServo.write(angle);
+
+  // 2. Calculate deviation from center (Center is ~512)
+  int deviation = abs(joyVal - 512);
+
+  // 3. Determine buzzer state based on joystick position
+  if (deviation < 40) {
+    // Relaxed zone (Center) -> Stop beeping completely
+    digitalWrite(buzzerPin, LOW);
+    buzzerState = false;
+  } else {
+    // Pushed Left or Right -> Faster beeping the further you push
+    int beepInterval = map(deviation, 40, 512, 400, 30);
+    beepInterval = constrain(beepInterval, 30, 400);
+
+    // Non-blocking buzzer toggle
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= beepInterval) {
+      previousMillis = currentMillis;
+      buzzerState = !buzzerState;
+      digitalWrite(buzzerPin, buzzerState ? HIGH : LOW);
+    }
+  }
+
+  // 4. Update LCD Telemetry Dashboard
   lcd.setCursor(0, 0);
-  lcd.print("Joystick Ctrl   ");
-  
+  if (deviation < 40) {
+    lcd.print("Status: RELAXED ");
+  } else if (joyVal < 512) {
+    lcd.print("Status: LEFT    ");
+  } else {
+    lcd.print("Status: RIGHT   ");
+  }
+
+  // Display exact degree rotation on line 2
   lcd.setCursor(0, 1);
   lcd.print("Angle: ");
-  lcd.print(servoAngle);
-  lcd.print(" deg   "); // Extra spaces to clear old trailing digits
+  lcd.print(angle);
+  lcd.print(" deg   "); 
 
-  delay(50); // Small delay for smooth operation
+  delay(20); 
 }
